@@ -5,18 +5,19 @@ A Spring Boot URL shortener prototype built with Java 17, Spring Web, Spring Dat
 ## Features
 
 - Create short URLs from a long URL payload
-- Store mappings in a persistent database with Liquibase schema versioning
+- Store mappings in a persistent PostgreSQL database with schema initialization and versioning support
 - Redirect short codes to the original long URL
 - Track click count and last-accessed timestamp per short code
 - Expose analytics for each short code
 - Request validation using Jakarta Validation
 - Global exception handling for validation and runtime errors
-- IP-based bucket rate limiting for POST /api/v1/shorten
+- IP-based distributed rate limiting for POST /api/v1/shorten backed by Redis Bucket4j
 - Swagger/OpenAPI docs generated automatically
 - Spring Boot Actuator health, metrics, and Prometheus endpoints
 - Console and MDC trace-aware logging
 - MockMvc + Mockito controller tests covering success and failure paths
 - Docker Compose setup for PostgreSQL, Redis, and the application
+- Safe docker startup ordering and health checks for database/cache readiness
 
 ## Tech Stack
 
@@ -24,10 +25,11 @@ A Spring Boot URL shortener prototype built with Java 17, Spring Web, Spring Dat
 - Spring Boot 4.1.1
 - Spring Web
 - Spring Data JPA
-- PostgreSQL / H2 (development)
-- Liquibase
-- Redis (deployment support via Docker)
-- Bucket4j
+- PostgreSQL (Docker runtime, schema initialized on first startup)
+- H2 remains available for local/offline development compatibility
+- Liquibase support retained for migration-based schema evolution
+- Redis (runtime shared state for distributed rate limiting)
+- Bucket4j + bucket4j-redis (distributed rate limiting)
 - Spring Validation
 - SpringDoc OpenAPI UI
 - Spring Boot Actuator + Micrometer Prometheus
@@ -41,7 +43,9 @@ This application is built in a layered MVC-style architecture with separation of
 - Service layer: contains the business logic for shortening and redirect resolution
 - Repository layer: persists and retrieves `UrlMapping` records via Spring Data JPA
 - Entity layer: models the database table representing short code mappings
+- Rate limiting layer: Redis-backed Bucket4j filter enforces a shared 10 req/min/IP cap for `POST /api/v1/shorten`
 - Exception layer: centralizes API error handling and returns consistent status/error payloads
+- Persistence layer: PostgreSQL in Docker, with schema bootstrap for the `url_mapping` table and optional Liquibase-based migration support
 
 ## High-Level Architecture Diagram
 
@@ -70,8 +74,9 @@ This application is built in a layered MVC-style architecture with separation of
               +-------------------+
 
 Optional runtime services:
-+ Redis cache / shared rate-limit store (Docker)
++ Redis cache / shared distributed rate-limit store (Docker)
 + Actuator + Prometheus metrics / tracing
++ Postgres schema bootstrap for local Docker startup
 ```
 ## Component Diagram
 
@@ -140,14 +145,14 @@ Optional runtime services:
 Windows PowerShell:
 
 ```powershell
-cd C:\Users\vinayagam\IdeaProjects\url-shortner
+cd C:\Users\vinay\IdeaProjects\url-shortener
 .\gradlew.bat bootRun
 ```
 
 macOS/Linux:
 
 ```bash
-cd /path/to/url-shortner
+cd /path/to/url-shortener
 ./gradlew bootRun
 ```
 
@@ -162,7 +167,7 @@ http://localhost:8080
 From the project root:
 
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 This starts:
@@ -170,11 +175,20 @@ This starts:
 - PostgreSQL on `localhost:5432`
 - Redis on `localhost:6379`
 - URL shortener app on `http://localhost:8080`
+- Redis-backed rate limiting for `POST /api/v1/shorten`
+
+The Postgres container seeds the `url_mapping` table via `postgres/init-db.sql` during first startup. Docker health checks ensure Postgres and Redis are ready before the app starts.
 
 To stop containers:
 
 ```bash
-docker-compose down
+docker compose down
+```
+
+To reset volumes and reinitialize databases:
+
+```bash
+docker compose down -v
 ```
 
 ## Swagger / OpenAPI
@@ -294,11 +308,12 @@ Example response:
 
 ## Rate Limiting
 
-The application applies an in-memory IP-based rate limit using Bucket4j for the creation endpoint only.
+The application applies a Redis-backed IP-based rate limit using Bucket4j for the creation endpoint only.
 
 - Endpoint: `POST /api/v1/shorten`
 - Limit: 10 requests per IP per minute
 - When exceeded, the API returns HTTP 429 and a JSON error body
+- Rate-limit state is stored in Redis so multiple app instances behind a load balancer share the same quota
 
 Example response:
 
@@ -369,7 +384,7 @@ macOS/Linux:
 
 ## Notes
 
-- The app uses a file-backed H2 database by default for local development, with Liquibase controlling schema versioning.
+- The app uses a file-backed H2 database by default for local development, with Liquibase support retained for schema evolution.
 - A Docker Compose setup is provided for PostgreSQL + Redis + Spring Boot deployment testing.
-- The rate limiter is in-memory and suitable for a single node; a multi-node deployment should use Redis-backed distributed rate limiting.
+- The rate limiter is backed by Redis so multiple app instances behind a load balancer share a single quota instead of each JVM enforcing its own counter.
 - This is a prototype intended for engineering review and testing, with durability and operational hardening added incrementally.
