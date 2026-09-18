@@ -166,6 +166,16 @@ http://localhost:8080
 
 From the project root:
 
+1. **Configure environment variables** (optional - defaults are provided):
+   - Copy `.env.example` to `.env` and update database credentials:
+   
+   ```bash
+   cp .env.example .env
+   # Edit .env with your preferred credentials
+   ```
+
+2. **Start the services**:
+
 ```bash
 docker compose up --build
 ```
@@ -190,6 +200,8 @@ To reset volumes and reinitialize databases:
 ```bash
 docker compose down -v
 ```
+
+**Note**: The `.env` file is not committed to version control for security. A `.env.example` template is provided; copy and customize it for your environment.
 
 ## Swagger / OpenAPI
 
@@ -304,7 +316,7 @@ Example response:
 ## Validation Rules
 
 - `longURL` is required
-- It must be a valid URL format starting with `http://`, `https://`, or `ftp://`
+- It must be a valid HTTPS URL format starting with `https://` (HTTP and FTP are not allowed for security)
 
 ## Rate Limiting
 
@@ -345,6 +357,17 @@ Read-only routes like `GET /{shortCode}` and `/actuator/*` bypass the limiter.
   "error": "couldn't find a matching long URL to redirect"
 }
 ```
+
+## Security
+
+This application includes the following security measures:
+
+- **HTTPS-only URLs**: Only `https://` URLs are accepted for shortening to prevent insecure protocol redirects (HTTP, FTP, file://, etc.)
+- **URL Validation**: URLs are validated before being stored and served to prevent open redirect vulnerabilities
+- **Error Sanitization**: Internal exception details are not exposed to clients. Server errors return a generic "Internal server error" message while full details are logged on the server side
+- **Distributed Rate Limiting**: Redis-backed Bucket4j protects `POST /api/v1/shorten` from abuse with a 10 req/min/IP limit. In multi-instance deployments, the limit is enforced globally via Redis, not per instance
+- **Input Validation**: Request payloads are validated using Jakarta Validation with explicit error messages
+- **Environment Variables**: Database credentials are managed via `.env` files and not hardcoded in the source code or docker-compose.yml
 
 ## Testing Commands
 
