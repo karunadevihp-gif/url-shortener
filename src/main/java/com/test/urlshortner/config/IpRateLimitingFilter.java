@@ -19,6 +19,8 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -27,6 +29,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Component
 public class IpRateLimitingFilter extends OncePerRequestFilter {
 
+    private static final Logger log = LoggerFactory.getLogger(IpRateLimitingFilter.class);
     private static final int LIMIT_PER_WINDOW = 10;
     private static final Duration WINDOW = Duration.ofMinutes(1);
     private static final String SHORTEN_PATH = "/api/v1/shorten";
@@ -92,6 +95,7 @@ public class IpRateLimitingFilter extends OncePerRequestFilter {
             RedisClient redisClient = RedisClient.create(RedisURI.Builder.redis(redisHost).withPort(redisPort).build());
             return LettuceBasedProxyManager.builderFor(redisClient).build();
         } catch (Exception ex) {
+            log.warn("Failed to connect to Redis at {}:{}. Falling back to in-memory rate limiting.", redisHost, redisPort, ex);
             return null;
         }
     }

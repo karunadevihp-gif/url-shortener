@@ -48,10 +48,22 @@ public class UrlMappingController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "couldn't find a matching long URL to redirect");
         }
 
-        log.info("Redirecting shortCode {} to original URL {}", shortCode, urlMapping.getOriginalUrl());
+        // Validate URL before redirect to prevent open redirect attacks
+        String originalUrl = urlMapping.getOriginalUrl();
+        if (!isValidRedirectUrl(originalUrl)) {
+            log.warn("Attempted redirect to invalid URL: {}", originalUrl);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid redirect URL");
+        }
+
+        log.info("Redirecting shortCode {} to original URL {}", shortCode, originalUrl);
         return ResponseEntity.status(HttpStatus.FOUND)
-                .header("Location", urlMapping.getOriginalUrl())
+                .header("Location", originalUrl)
                 .build();
+    }
+
+    private boolean isValidRedirectUrl(String url) {
+        // Only allow https:// URLs to prevent javascript:, data:, file:// redirects
+        return url != null && url.startsWith("https://");
     }
 
     @GetMapping("/analytics/{shortCode}")
