@@ -57,9 +57,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleServerException(Exception ex) {
-        String message = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
-        log.error("Unhandled server exception: {}", message, ex);
+        log.error("Unhandled server exception: {}", ex.getClass().getSimpleName(), ex);
+        // Don't expose raw exception details to clients
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), message));
+                .body(new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), "Internal server error"));
     }
 }
